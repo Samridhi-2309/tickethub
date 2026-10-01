@@ -31,9 +31,18 @@ public class Booking {
     @Column(name = "total_cents", nullable = false)
     private Long totalCents;
 
-    @Column(name = "created_at", insertable = false, updatable = false)
+    // Set in Java rather than relying on the DB default, so the value is
+    // present in the entity straight after save() without a re-read.
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
+
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }

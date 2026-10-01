@@ -1,0 +1,107 @@
+### TicketHub — manual API walkthrough
+### Open in IntelliJ and click the green arrows, or copy the curl equivalents
+### from the README.
+
+@host = http://localhost:8080
+@userId = 1
+
+### 1. Health
+GET {{host}}/health
+
+### 2. List events
+GET {{host}}/api/events
+
+### 3. Seat map for event 1 (200 seats)
+GET {{host}}/api/events/1/seats
+
+### 4. Hold two seats
+# Copy `holdId` from the response into the @holdId variable below.
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": [1, 2]
+}
+
+### 5. Try to hold the SAME seats again — expect 409 SEAT_UNAVAILABLE
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 2,
+  "eventId": 1,
+  "seatIds": [1, 2]
+}
+
+### 6. Confirm the hold
+@holdId = PASTE_HOLD_ID_HERE
+
+POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+
+{
+  "holdId": "{{holdId}}",
+  "userId": 1
+}
+
+### 7. Fetch the booking
+GET {{host}}/api/bookings/1
+
+### 8. List this user's bookings
+GET {{host}}/api/bookings?userId=1
+
+### 9. Cancel it — seats return to AVAILABLE
+POST {{host}}/api/bookings/1/cancel?userId=1
+
+### 10. Confirm the seats are free again
+GET {{host}}/api/events/1/seats
+
+### ── Expiry check ────────────────────────────────────────────
+### Hold seats and do NOT confirm. After 120 seconds the sweeper
+### logs "Expiry sweep released N seat(s)" and this returns them
+### to AVAILABLE.
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": [50]
+}
+
+### ── Validation / error cases ────────────────────────────────
+
+### Empty seat list -> 400 VALIDATION_FAILED
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": []
+}
+
+### Seat from another event -> 400 BAD_REQUEST
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": [205]
+}
+
+### More than 8 seats -> 400 BAD_REQUEST
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": [10,11,12,13,14,15,16,17,18]
+}
+
+### Unknown booking -> 404 NOT_FOUND
+GET {{host}}/api/bookings/9999
