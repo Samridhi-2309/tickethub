@@ -18,18 +18,8 @@ export default function EventSeats() {
 
   // Avoids a React state update after the component unmounts, which
   // would otherwise happen when a poll lands mid-navigation.
-  // Guards against setting state after unmount.
-  //
-  // It must be set true on every mount, not just at ref creation:
-  // StrictMode mounts, unmounts and remounts each component in
-  // development, so a ref only cleared in the cleanup stays false
-  // forever after that first simulated unmount — and every later
-  // response gets silently dropped.
   const alive = useRef(true);
-  useEffect(() => {
-    alive.current = true;
-    return () => { alive.current = false; };
-  }, []);
+  useEffect(() => () => { alive.current = false; }, []);
 
   const refresh = useCallback(async () => {
     try {
