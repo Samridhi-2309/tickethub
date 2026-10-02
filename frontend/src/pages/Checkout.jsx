@@ -89,12 +89,12 @@ export default function Checkout() {
       {error && <p className="error">{error}</p>}
 
       <button className="primary wide" onClick={confirm}>
-        Reserve seats - pay at the venue
+        Confirm booking
       </button>
 
       <p className="muted small">
         These seats are reserved for you until the timer runs out. Nobody else
-        can take them in the meantime. Payment is collected at the venue, so no card details are handled here.
+        can take them in the meantime.
       </p>
     </div>
   );

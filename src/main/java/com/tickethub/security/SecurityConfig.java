@@ -42,7 +42,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/health", "/api/auth/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/events/**").permitAll()
-                    .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                    .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                     .anyRequest().authenticated())
             // Our filter runs before the username/password filter so that a
             // valid token short-circuits form login entirely.
