@@ -92,6 +92,44 @@ A seat would sit at `HELD` forever once its claim lapsed. So the sweep runs
 from the database side: find `HELD` rows, ask Redis which are still claimed,
 release the rest.
 
+## Auth
+
+JWT bearer tokens, HS256. `POST /api/auth/register` and `/api/auth/login`
+return a token; everything under `/api/bookings` requires it. Browsing
+events stays public.
+
+The user id comes from the authenticated principal, never from the request
+body — before Day 4 the client sent its own `userId`, which meant anyone
+could book as anyone. Passwords are BCrypt at cost 10, and login returns the
+same error for an unknown email as for a wrong password so the endpoint
+cannot be used to enumerate accounts.
+
+Seeded accounts: `demo@tickethub.dev` / `second@tickethub.dev`, password
+`password123`.
+
+## Tests
+
+```bash
+./mvnw test
+```
+
+Integration tests run against real Postgres and Redis via Testcontainers,
+not H2 and an embedded fake. The behaviour under test *is* the database's —
+`SELECT ... FOR UPDATE`, a partial unique index, Redis's single-threaded
+script execution — so a test against H2 would prove nothing about
+production.
+
+`ConcurrentBookingTest` is the one that matters:
+
+- 100 threads race for one seat → exactly one hold succeeds
+- 100 threads race hold+confirm → exactly one booking exists, and
+  `booking_seats` has exactly one active row for that seat
+- two overlapping multi-seat requests → the loser claims nothing
+
+Every worker blocks on a `CountDownLatch` until all are scheduled, then all
+are released at once. Without that start gate the threads would finish one
+after another and the test would be sequential code wearing a thread pool.
+
 ## Schema
 
 Flyway owns the schema (`src/main/resources/db/migration`); Hibernate runs with
@@ -102,6 +140,6 @@ Flyway owns the schema (`src/main/resources/db/migration`); Hibernate runs with
 - [x] Day 1 — scaffold, Docker, schema, entities, health check
 - [x] Day 2 — event/seat listing, hold → confirm → cancel, expiry sweeper
 - [x] Day 3 — Redis holds, pessimistic locking, idempotency keys
-- [ ] Day 4 — JWT auth, concurrency test
+- [x] Day 4 — JWT auth, concurrency test
 - [ ] Day 5 — React front-end
 - [ ] Day 6 — load test, demo recording, docs
