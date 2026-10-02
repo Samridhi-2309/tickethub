@@ -22,5 +22,4 @@ tickethub:
 logging:
   level:
     org.hibernate.SQL: warn
-    org.hibernate.orm.jdbc.bind: warn
     org.testcontainers: info

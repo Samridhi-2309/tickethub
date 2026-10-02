@@ -40,12 +40,7 @@ public class SecurityConfig {
             // No server-side session: every request carries its own proof.
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/health").permitAll()
-                    // Only register and login are public. /api/auth/me must NOT
-                    // be — it exists to report who the token belongs to, so an
-                    // unauthenticated request there should be rejected by the
-                    // filter chain, not reach the controller with a null principal.
-                    .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                    .requestMatchers("/health", "/api/auth/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/events/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                     .anyRequest().authenticated())

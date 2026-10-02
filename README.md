@@ -130,6 +130,39 @@ Every worker blocks on a `CountDownLatch` until all are scheduled, then all
 are released at once. Without that start gate the threads would finish one
 after another and the test would be sequential code wearing a thread pool.
 
+## Front-end
+
+React 18 + Vite, in `frontend/`.
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+```
+
+Vite proxies `/api` to `:8080`, so the browser sees same-origin requests and
+CORS never enters the picture in development.
+
+Pages: sign in / register, event list, live seat map, checkout with a hold
+countdown, and a bookings list with cancel.
+
+Two details worth knowing:
+
+**The seat map polls every 3 seconds.** Open the app in two browser windows,
+hold a seat in one, and watch it turn amber in the other. That is the
+double-booking defence made visible. Polling rather than websockets is a
+deliberate trade — a few lines versus a push channel — and at real scale a
+hot event would want SSE or websockets so thousands of clients are not
+polling the same endpoint.
+
+**The idempotency key is generated once per checkout and held in a ref.**
+If the confirm response is lost and the user clicks again, the server replays
+the original booking. A fresh key per click would defeat the mechanism
+entirely.
+
+The client-side route guard is a convenience, not a security control — every
+protected endpoint is enforced by the JWT filter server-side.
+
 ## Schema
 
 Flyway owns the schema (`src/main/resources/db/migration`); Hibernate runs with
@@ -141,5 +174,5 @@ Flyway owns the schema (`src/main/resources/db/migration`); Hibernate runs with
 - [x] Day 2 — event/seat listing, hold → confirm → cancel, expiry sweeper
 - [x] Day 3 — Redis holds, pessimistic locking, idempotency keys
 - [x] Day 4 — JWT auth, concurrency test
-- [ ] Day 5 — React front-end
+- [x] Day 5 — React front-end
 - [ ] Day 6 — load test, demo recording, docs
