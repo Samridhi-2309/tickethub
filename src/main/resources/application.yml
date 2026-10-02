@@ -36,8 +36,11 @@ server:
 
 logging:
   level:
+    # Statements are visible (useful for watching SELECT ... FOR UPDATE
+    # during a concurrency demo); parameter binding is not, because it
+    # logs every value of every statement and buries everything else.
     org.hibernate.SQL: debug
-    org.hibernate.orm.jdbc.bind: trace
+    org.hibernate.orm.jdbc.bind: warn
 
 # ── Application settings ─────────────────────────────────────
 tickethub:
@@ -51,3 +54,8 @@ tickethub:
   idem-purge-ms: 3600000
   # Which HoldStore implementation to wire in: redis (default) or memory.
   hold-store: redis
+  # HS256 signing key, base64. Overridden by TICKETHUB_JWT_SECRET in any
+  # real deployment — a secret in source control is not a secret.
+  jwt:
+    secret: ${TICKETHUB_JWT_SECRET:uOuy+gyyNTjReQhCaEXJ7mDJ96NvwiUW1qQhvKrBK79LkhSDQb/36LttXSadcdwZ}
+    expiry-minutes: 60

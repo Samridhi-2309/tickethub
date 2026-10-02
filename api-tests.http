@@ -1,52 +1,95 @@
 ### TicketHub — manual API walkthrough
-### Open in IntelliJ and click the green arrows.
+### Day 4: everything under /api/bookings now needs a JWT.
 
 @host = http://localhost:8080
-@userId = 1
 
-### 1. Health
-GET {{host}}/health
+### ── Auth ────────────────────────────────────────────────────
 
-### 2. List events
+### 1. Log in as the seeded demo user (password: password123)
+### Copy the `token` from the response into @token below.
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "demo@tickethub.dev",
+  "password": "password123"
+}
+
+### 2. Or register a new account
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "samridhi@tickethub.dev",
+  "password": "password123",
+  "displayName": "Samridhi"
+}
+
+@token = PASTE_TOKEN_HERE
+
+### 3. Check the token works
+GET {{host}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### 4. No token on a protected endpoint -> 401
+GET {{host}}/api/bookings
+
+### 5. Tampered token -> 401
+GET {{host}}/api/auth/me
+Authorization: Bearer not.a.real.token
+
+### 6. Wrong password -> 401 INVALID_CREDENTIALS
+### (same error as an unknown email, on purpose)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "demo@tickethub.dev",
+  "password": "wrong"
+}
+
+### ── Public reads ────────────────────────────────────────────
+
+### 7. Browsing events needs no token
 GET {{host}}/api/events
 
-### 3. Seat map for event 1 (200 seats)
+### 8. Seat map, also public
 GET {{host}}/api/events/1/seats
 
-### ── Day 3: the Redis claim ──────────────────────────────────
+### ── Booking (authenticated) ─────────────────────────────────
 
-### 4. Hold two seats. Copy holdId into @holdId below.
+### 9. Hold two seats. Note: no userId in the body any more —
+### it comes from the token.
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
+Authorization: Bearer {{token}}
 
 {
-  "userId": 1,
   "eventId": 1,
   "seatIds": [1, 2]
 }
 
-### 5. Same seats, different user -> 409, rejected by the Redis claim
+### 10. Same seats again -> 409, refused by the Redis claim
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
+Authorization: Bearer {{token}}
 
 {
-  "userId": 2,
   "eventId": 1,
   "seatIds": [1, 2]
 }
 
-### 6. Overlapping request: seat 2 is taken, so seat 3 must NOT be
-### claimed either. All-or-nothing. Check seat 3 is still AVAILABLE after.
+### 11. Overlapping request: seat 2 taken, so seat 3 must NOT be claimed
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
+Authorization: Bearer {{token}}
 
 {
-  "userId": 2,
   "eventId": 1,
   "seatIds": [2, 3]
 }
 
-### 7. Verify seat 3 was not partially claimed
+### 12. Confirm seat 3 was not partially claimed
 GET {{host}}/api/events/1/seats
 
 ### ── Confirm with idempotency ────────────────────────────────
@@ -54,69 +97,57 @@ GET {{host}}/api/events/1/seats
 @holdId = PASTE_HOLD_ID_HERE
 @idemKey = demo-key-001
 
-### 8. Confirm, carrying an Idempotency-Key
+### 13. Confirm
 POST {{host}}/api/bookings/confirm
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: {{idemKey}}
 
 {
-  "holdId": "{{holdId}}",
-  "userId": 1
+  "holdId": "{{holdId}}"
 }
 
-### 9. Send the EXACT same request again.
-### Expect: identical response, same booking id, NO second booking.
+### 14. Exact same request again -> same booking id, no second booking
 POST {{host}}/api/bookings/confirm
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: {{idemKey}}
 
 {
-  "holdId": "{{holdId}}",
-  "userId": 1
+  "holdId": "{{holdId}}"
 }
 
-### 10. Same key, different body -> 422 IDEMPOTENCY_KEY_REUSED
+### 15. Same key, different body -> 422 IDEMPOTENCY_KEY_REUSED
 POST {{host}}/api/bookings/confirm
 Content-Type: application/json
+Authorization: Bearer {{token}}
 Idempotency-Key: {{idemKey}}
 
 {
-  "holdId": "some-other-hold-id",
-  "userId": 1
+  "holdId": "00000000-0000-0000-0000-000000000000"
 }
 
-### 11. Only one booking should exist for this user
-GET {{host}}/api/bookings?userId=1
+### 16. My bookings — scoped to the token's user
+GET {{host}}/api/bookings
+Authorization: Bearer {{token}}
 
 ### ── Cancel ──────────────────────────────────────────────────
 
-### 12. Cancel booking 1
-POST {{host}}/api/bookings/1/cancel?userId=1
+### 17. Cancel booking 1
+POST {{host}}/api/bookings/1/cancel
+Authorization: Bearer {{token}}
 
-### 13. Seats 1 and 2 back to AVAILABLE
+### 18. Seats back to AVAILABLE
 GET {{host}}/api/events/1/seats
-
-### ── Orphan sweeper ──────────────────────────────────────────
-### Hold a seat and do not confirm. After 120s the Redis key expires;
-### within 5s of that the sweeper logs "Expiry sweep released N seat(s)"
-### and the seat returns to AVAILABLE.
-POST {{host}}/api/bookings/hold
-Content-Type: application/json
-
-{
-  "userId": 1,
-  "eventId": 1,
-  "seatIds": [50]
-}
 
 ### ── Error cases ─────────────────────────────────────────────
 
 ### Empty seat list -> 400 VALIDATION_FAILED
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
+Authorization: Bearer {{token}}
 
 {
-  "userId": 1,
   "eventId": 1,
   "seatIds": []
 }
@@ -124,21 +155,28 @@ Content-Type: application/json
 ### Seat from another event -> 400 BAD_REQUEST
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
+Authorization: Bearer {{token}}
 
 {
-  "userId": 1,
   "eventId": 1,
   "seatIds": [205]
 }
 
-### Unknown booking -> 404 NOT_FOUND
-GET {{host}}/api/bookings/9999
-
-### Expired or unknown hold -> 410 HOLD_EXPIRED
+### Unknown or expired hold -> 410 HOLD_EXPIRED
 POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "holdId": "00000000-0000-0000-0000-000000000000"
+}
+
+### Short password on register -> 400 VALIDATION_FAILED
+POST {{host}}/api/auth/register
 Content-Type: application/json
 
 {
-  "holdId": "00000000-0000-0000-0000-000000000000",
-  "userId": 1
+  "email": "short@tickethub.dev",
+  "password": "abc",
+  "displayName": "Short"
 }

@@ -6,11 +6,11 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 /**
- * userId is passed in the body only until Day 4, when JWT auth replaces it
- * with the authenticated principal. Do not ship this shape.
+ * Day 4 removed userId from this body. The user is taken from the
+ * authenticated principal instead — a client that can name its own user
+ * id can book seats as anyone else.
  */
 public record HoldRequest(
-        @NotNull Long userId,
         @NotNull Long eventId,
         @NotEmpty List<Long> seatIds
 ) {}

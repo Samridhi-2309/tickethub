@@ -64,13 +64,13 @@ public class BookingService {
     // ── Hold ─────────────────────────────────────────────────────
 
     @Transactional
-    public HoldResponse hold(HoldRequest request) {
+    public HoldResponse hold(HoldRequest request, Long userId) {
         if (request.seatIds().size() > maxSeatsPerBooking) {
             throw ApiException.badRequest(
                     "Cannot hold more than " + maxSeatsPerBooking + " seats in one booking");
         }
-        if (!userRepository.existsById(request.userId())) {
-            throw ApiException.notFound("No user with id " + request.userId());
+        if (!userRepository.existsById(userId)) {
+            throw ApiException.notFound("No user with id " + userId);
         }
 
         // Sorted so that multi-seat bookings always touch rows in the same
@@ -102,7 +102,7 @@ public class BookingService {
         Instant expiresAt = Instant.now().plus(Duration.ofSeconds(holdSeconds));
         SeatHold hold = new SeatHold(
                 UUID.randomUUID().toString(),
-                request.userId(),
+                userId,
                 request.eventId(),
                 seatIds,
                 totalCents,
@@ -122,7 +122,7 @@ public class BookingService {
         seatRepository.saveAll(seats);
 
         log.info("Hold {} claimed seats {} for user {}",
-                hold.holdId(), seatIds, request.userId());
+                hold.holdId(), seatIds, userId);
 
         return new HoldResponse(
                 hold.holdId(),
@@ -136,12 +136,12 @@ public class BookingService {
     // ── Confirm ──────────────────────────────────────────────────
 
     @Transactional
-    public BookingResponse confirm(ConfirmRequest request) {
+    public BookingResponse confirm(ConfirmRequest request, Long userId) {
         SeatHold hold = holdStore.get(request.holdId())
                 .orElseThrow(() -> ApiException.holdExpired(
                         "Hold " + request.holdId() + " has expired or does not exist"));
 
-        if (!hold.userId().equals(request.userId())) {
+        if (!hold.userId().equals(userId)) {
             throw ApiException.badRequest("Hold belongs to a different user");
         }
 
@@ -243,9 +243,14 @@ public class BookingService {
     // ── Reads ────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public BookingResponse getBooking(Long bookingId) {
+    public BookingResponse getBooking(Long bookingId, Long userId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> ApiException.notFound("No booking with id " + bookingId));
+        // 404 rather than 403 for someone else's booking: a 403 would
+        // confirm the id exists, which is itself information.
+        if (!booking.getUserId().equals(userId)) {
+            throw ApiException.notFound("No booking with id " + bookingId);
+        }
         List<Long> seatIds = bookingSeatRepository.findByBookingId(bookingId).stream()
                 .map(BookingSeat::getSeatId)
                 .toList();

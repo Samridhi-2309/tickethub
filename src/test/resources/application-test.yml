@@ -1,0 +1,26 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+tickethub:
+  hold-seconds: 60
+  max-seats-per-booking: 8
+  # The sweeper is disabled in tests: a background thread flipping seat
+  # status mid-assertion makes failures impossible to reason about.
+  expiry-sweep-ms: 3600000
+  idem-purge-ms: 3600000
+  hold-store: redis
+  jwt:
+    secret: dGVzdC1zZWNyZXQtdGhhdC1pcy1sb25nLWVub3VnaC1mb3ItaHMyNTYtc2lnbmluZy1vay0h
+    expiry-minutes: 60
+
+logging:
+  level:
+    org.hibernate.SQL: warn
+    org.hibernate.orm.jdbc.bind: warn
+    org.testcontainers: info
