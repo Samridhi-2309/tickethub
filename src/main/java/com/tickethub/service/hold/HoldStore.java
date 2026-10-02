@@ -6,18 +6,37 @@ import java.util.Optional;
 /**
  * Where seat holds live.
  *
- * Day 2 ships an in-memory implementation. Day 3 replaces it with a Redis
- * implementation — the interface exists so that swap is a one-line change
- * in configuration rather than a rewrite of the booking service.
+ * Day 3 rewrote this interface. Day 2's version exposed put/get/remove,
+ * which forced BookingService to do "check availability, then write" in
+ * two steps — the check-then-act race.
+ *
+ * {@link #tryClaim} replaces that with a single all-or-nothing operation:
+ * either this caller gets every seat, or it gets none and somebody else
+ * already holds at least one.
  */
 public interface HoldStore {
 
-    void put(SeatHold hold);
+    /**
+     * Atomically claim every seat in the hold.
+     *
+     * @return true if this caller now owns all of them; false if any seat
+     *         was already claimed, in which case nothing was claimed.
+     */
+    boolean tryClaim(SeatHold hold);
 
     Optional<SeatHold> get(String holdId);
 
-    void remove(String holdId);
+    /** Drop the hold and all of its seat claims. */
+    void release(String holdId);
 
-    /** Holds whose expiry has passed and whose seats need releasing. */
-    List<SeatHold> findExpired();
+    /**
+     * Is this seat currently claimed by any live hold?
+     *
+     * Used by the sweeper to find seats stuck at HELD in Postgres whose
+     * claim has since expired.
+     */
+    boolean isSeatClaimed(Long seatId);
+
+    /** Seat ids from the given list that are currently claimed. */
+    List<Long> claimedSeats(List<Long> seatIds);
 }

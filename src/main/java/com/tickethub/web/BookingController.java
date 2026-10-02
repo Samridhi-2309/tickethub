@@ -1,6 +1,7 @@
 package com.tickethub.web;
 
 import com.tickethub.service.BookingService;
+import com.tickethub.service.IdempotencyService;
 import com.tickethub.web.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import java.util.List;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final IdempotencyService idempotencyService;
 
     /** Step 1: claim seats for a short window while the user checks out. */
     @PostMapping("/hold")
@@ -23,11 +25,25 @@ public class BookingController {
         return bookingService.hold(request);
     }
 
-    /** Step 2: turn a live hold into a confirmed booking. */
+    /**
+     * Step 2: turn a live hold into a confirmed booking.
+     *
+     * Send an Idempotency-Key header and the request becomes safe to
+     * retry: a repeat with the same key replays the first response
+     * instead of creating a second booking.
+     */
     @PostMapping("/confirm")
     @ResponseStatus(HttpStatus.CREATED)
-    public BookingResponse confirm(@Valid @RequestBody ConfirmRequest request) {
-        return bookingService.confirm(request);
+    public BookingResponse confirm(
+            @Valid @RequestBody ConfirmRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+
+        return idempotencyService.execute(
+                idempotencyKey,
+                request.userId(),
+                request,
+                BookingResponse.class,
+                () -> bookingService.confirm(request));
     }
 
     @PostMapping("/{bookingId}/cancel")

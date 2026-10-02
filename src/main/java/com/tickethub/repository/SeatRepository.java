@@ -16,14 +16,17 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     long countByEventIdAndStatus(Long eventId, SeatStatus status);
 
+    /** Used by the orphan sweeper. */
+    List<Seat> findByStatus(SeatStatus status);
+
     /**
-     * Day 3 uses this. PESSIMISTIC_WRITE makes Hibernate emit
-     * SELECT ... FOR UPDATE, so concurrent transactions asking for the
-     * same seat rows block until this transaction commits or rolls back.
+     * PESSIMISTIC_WRITE makes Hibernate emit SELECT ... FOR UPDATE, so a
+     * concurrent transaction asking for the same rows blocks until this
+     * one commits or rolls back.
      *
      * ORDER BY s.id is not cosmetic: locking multi-seat bookings in a
-     * consistent order prevents two transactions deadlocking by grabbing
-     * the same two seats in opposite orders.
+     * consistent order stops two transactions deadlocking by taking the
+     * same two seats in opposite orders.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Seat s WHERE s.id IN :ids ORDER BY s.id")

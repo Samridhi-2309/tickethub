@@ -50,26 +50,47 @@ A hold is a short-lived claim so the UI can show a seat as taken while the user
 checks out, without committing a booking. Holds lapse after 120 seconds; a
 sweeper runs every 5 seconds and returns lapsed seats to `AVAILABLE`.
 
-## Current limitation — read this before Day 3
+## How double booking is prevented
 
-`BookingService.hold()` is **not concurrency-safe, on purpose.** It reads each
-seat's status and writes `HELD` in a separate step. Two requests can both read
-`AVAILABLE` before either writes, and both succeed — the classic check-then-act
-race, which here means a double booking.
+Three independent layers, each sufficient on its own for a narrower case:
 
-Holds also live in a `ConcurrentHashMap` in the JVM heap, so they die with the
-process and are invisible to a second app instance.
+**1. Atomic Redis claim (`hold`)**
+A Lua script checks every requested seat key and sets them all, or sets none.
+Redis is single-threaded and will not interleave another client's command
+inside a script, so the check-all-then-claim-all sequence cannot be raced.
+Issuing N separate `SET NX` calls would leave a window between seat 1 and
+seat 2 — hence the script rather than a loop.
 
-Day 3 fixes both:
+**2. Pessimistic row locks (`confirm`)**
+`SELECT ... FOR UPDATE` on the seat rows, via
+`SeatRepository.findAllByIdForUpdate`. Concurrent transactions touching the
+same seats block rather than interleave. Rows are locked in ascending id
+order so two multi-seat bookings cannot deadlock by taking the same pair in
+opposite orders.
 
-- Redis holds — atomic claim via `SET NX`, with a TTL, shared across instances
-- `SELECT ... FOR UPDATE` on the seat rows at confirm time
-- Idempotency keys so a retried request replays rather than re-books
+**3. A partial unique index (the database)**
+`uq_seat_single_active_booking` allows a seat in at most one `booking_seats`
+row where `active = true`. This is what makes the guarantee unconditional —
+it holds even if layers 1 and 2 are both wrong. `confirm` catches the
+violation and returns 409 rather than 500.
 
-A partial unique index (`uq_seat_single_active_booking`) already backstops all
-of it: a seat may appear in at most one booking row where `active = true`, so
-even if every line of application logic were wrong, Postgres would reject the
-second insert.
+## Idempotency
+
+`POST /api/bookings/confirm` accepts an `Idempotency-Key` header. A retry
+with the same key replays the stored response instead of creating a second
+booking; the same key with a different body is rejected with 422.
+
+The race guard is the unique index on `idem_key`, not an existence check in
+Java — two concurrent retries would both pass such a check. One `INSERT`
+wins; the other gets a constraint violation and is told the request is in
+flight.
+
+## Why the sweeper still exists
+
+Redis expires its own keys, but nothing in Redis can update a Postgres row.
+A seat would sit at `HELD` forever once its claim lapsed. So the sweep runs
+from the database side: find `HELD` rows, ask Redis which are still claimed,
+release the rest.
 
 ## Schema
 
@@ -80,7 +101,7 @@ Flyway owns the schema (`src/main/resources/db/migration`); Hibernate runs with
 
 - [x] Day 1 — scaffold, Docker, schema, entities, health check
 - [x] Day 2 — event/seat listing, hold → confirm → cancel, expiry sweeper
-- [ ] Day 3 — Redis holds, pessimistic locking, idempotency keys
+- [x] Day 3 — Redis holds, pessimistic locking, idempotency keys
 - [ ] Day 4 — JWT auth, concurrency test
 - [ ] Day 5 — React front-end
 - [ ] Day 6 — load test, demo recording, docs

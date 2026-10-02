@@ -11,24 +11,41 @@ import org.springframework.stereotype.Component;
 public class HoldExpiryJob {
 
     private final BookingService bookingService;
+    private final IdempotencyStore idempotencyStore;
 
     /**
-     * Sweeps lapsed holds back to AVAILABLE.
+     * Returns seats stuck at HELD whose Redis claim has expired.
      *
-     * A single-instance scheduler like this is fine here; running several
-     * app instances would need a shared lock (ShedLock or similar) so the
-     * job does not run concurrently on every node.
+     * Redis frees its own keys by TTL, but nothing in Redis can update a
+     * Postgres row, so the seat status needs this sweep.
+     *
+     * A single-instance scheduler is fine here. Several app instances
+     * would need a shared lock (ShedLock or similar) so the job does not
+     * run on every node at once.
      */
     @Scheduled(fixedDelayString = "${tickethub.expiry-sweep-ms:5000}")
-    public void sweep() {
+    public void sweepHolds() {
         try {
-            int released = bookingService.releaseExpiredHolds();
+            int released = bookingService.releaseOrphanedHolds();
             if (released > 0) {
                 log.info("Expiry sweep released {} seat(s)", released);
             }
         } catch (Exception e) {
             // Never let an exception kill the scheduler thread.
             log.error("Expiry sweep failed", e);
+        }
+    }
+
+    /** Idempotency records are only useful for the retention window. */
+    @Scheduled(fixedDelayString = "${tickethub.idem-purge-ms:3600000}")
+    public void purgeIdempotencyKeys() {
+        try {
+            int purged = idempotencyStore.purgeExpired();
+            if (purged > 0) {
+                log.info("Purged {} expired idempotency key(s)", purged);
+            }
+        } catch (Exception e) {
+            log.error("Idempotency purge failed", e);
         }
     }
 }

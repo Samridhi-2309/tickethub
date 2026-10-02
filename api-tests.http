@@ -1,6 +1,5 @@
 ### TicketHub — manual API walkthrough
-### Open in IntelliJ and click the green arrows, or copy the curl equivalents
-### from the README.
+### Open in IntelliJ and click the green arrows.
 
 @host = http://localhost:8080
 @userId = 1
@@ -14,8 +13,9 @@ GET {{host}}/api/events
 ### 3. Seat map for event 1 (200 seats)
 GET {{host}}/api/events/1/seats
 
-### 4. Hold two seats
-# Copy `holdId` from the response into the @holdId variable below.
+### ── Day 3: the Redis claim ──────────────────────────────────
+
+### 4. Hold two seats. Copy holdId into @holdId below.
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
 
@@ -25,7 +25,7 @@ Content-Type: application/json
   "seatIds": [1, 2]
 }
 
-### 5. Try to hold the SAME seats again — expect 409 SEAT_UNAVAILABLE
+### 5. Same seats, different user -> 409, rejected by the Redis claim
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
 
@@ -35,33 +35,71 @@ Content-Type: application/json
   "seatIds": [1, 2]
 }
 
-### 6. Confirm the hold
-@holdId = PASTE_HOLD_ID_HERE
+### 6. Overlapping request: seat 2 is taken, so seat 3 must NOT be
+### claimed either. All-or-nothing. Check seat 3 is still AVAILABLE after.
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
 
+{
+  "userId": 2,
+  "eventId": 1,
+  "seatIds": [2, 3]
+}
+
+### 7. Verify seat 3 was not partially claimed
+GET {{host}}/api/events/1/seats
+
+### ── Confirm with idempotency ────────────────────────────────
+
+@holdId = PASTE_HOLD_ID_HERE
+@idemKey = demo-key-001
+
+### 8. Confirm, carrying an Idempotency-Key
 POST {{host}}/api/bookings/confirm
 Content-Type: application/json
+Idempotency-Key: {{idemKey}}
 
 {
   "holdId": "{{holdId}}",
   "userId": 1
 }
 
-### 7. Fetch the booking
-GET {{host}}/api/bookings/1
+### 9. Send the EXACT same request again.
+### Expect: identical response, same booking id, NO second booking.
+POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+Idempotency-Key: {{idemKey}}
 
-### 8. List this user's bookings
+{
+  "holdId": "{{holdId}}",
+  "userId": 1
+}
+
+### 10. Same key, different body -> 422 IDEMPOTENCY_KEY_REUSED
+POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+Idempotency-Key: {{idemKey}}
+
+{
+  "holdId": "some-other-hold-id",
+  "userId": 1
+}
+
+### 11. Only one booking should exist for this user
 GET {{host}}/api/bookings?userId=1
 
-### 9. Cancel it — seats return to AVAILABLE
+### ── Cancel ──────────────────────────────────────────────────
+
+### 12. Cancel booking 1
 POST {{host}}/api/bookings/1/cancel?userId=1
 
-### 10. Confirm the seats are free again
+### 13. Seats 1 and 2 back to AVAILABLE
 GET {{host}}/api/events/1/seats
 
-### ── Expiry check ────────────────────────────────────────────
-### Hold seats and do NOT confirm. After 120 seconds the sweeper
-### logs "Expiry sweep released N seat(s)" and this returns them
-### to AVAILABLE.
+### ── Orphan sweeper ──────────────────────────────────────────
+### Hold a seat and do not confirm. After 120s the Redis key expires;
+### within 5s of that the sweeper logs "Expiry sweep released N seat(s)"
+### and the seat returns to AVAILABLE.
 POST {{host}}/api/bookings/hold
 Content-Type: application/json
 
@@ -71,7 +109,7 @@ Content-Type: application/json
   "seatIds": [50]
 }
 
-### ── Validation / error cases ────────────────────────────────
+### ── Error cases ─────────────────────────────────────────────
 
 ### Empty seat list -> 400 VALIDATION_FAILED
 POST {{host}}/api/bookings/hold
@@ -93,15 +131,14 @@ Content-Type: application/json
   "seatIds": [205]
 }
 
-### More than 8 seats -> 400 BAD_REQUEST
-POST {{host}}/api/bookings/hold
+### Unknown booking -> 404 NOT_FOUND
+GET {{host}}/api/bookings/9999
+
+### Expired or unknown hold -> 410 HOLD_EXPIRED
+POST {{host}}/api/bookings/confirm
 Content-Type: application/json
 
 {
-  "userId": 1,
-  "eventId": 1,
-  "seatIds": [10,11,12,13,14,15,16,17,18]
+  "holdId": "00000000-0000-0000-0000-000000000000",
+  "userId": 1
 }
-
-### Unknown booking -> 404 NOT_FOUND
-GET {{host}}/api/bookings/9999

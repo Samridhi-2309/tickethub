@@ -45,5 +45,9 @@ tickethub:
   hold-seconds: 120
   # Upper bound on seats in a single booking.
   max-seats-per-booking: 8
-  # How often the expiry sweeper runs.
+  # How often the orphan-seat sweeper runs.
   expiry-sweep-ms: 5000
+  # How often expired idempotency records are purged.
+  idem-purge-ms: 3600000
+  # Which HoldStore implementation to wire in: redis (default) or memory.
+  hold-store: redis
