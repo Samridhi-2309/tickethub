@@ -38,3 +38,16 @@ logging:
   level:
     org.hibernate.SQL: debug
     org.hibernate.orm.jdbc.bind: trace
+
+# ── Application settings ─────────────────────────────────────
+tickethub:
+  # How long a seat hold survives without a confirm.
+  hold-seconds: 120
+  # Upper bound on seats in a single booking.
+  max-seats-per-booking: 8
+  # How often the orphan-seat sweeper runs.
+  expiry-sweep-ms: 5000
+  # How often expired idempotency records are purged.
+  idem-purge-ms: 3600000
+  # Which HoldStore implementation to wire in: redis (default) or memory.
+  hold-store: redis

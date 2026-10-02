@@ -1,0 +1,144 @@
+### TicketHub — manual API walkthrough
+### Open in IntelliJ and click the green arrows.
+
+@host = http://localhost:8080
+@userId = 1
+
+### 1. Health
+GET {{host}}/health
+
+### 2. List events
+GET {{host}}/api/events
+
+### 3. Seat map for event 1 (200 seats)
+GET {{host}}/api/events/1/seats
+
+### ── Day 3: the Redis claim ──────────────────────────────────
+
+### 4. Hold two seats. Copy holdId into @holdId below.
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": [1, 2]
+}
+
+### 5. Same seats, different user -> 409, rejected by the Redis claim
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 2,
+  "eventId": 1,
+  "seatIds": [1, 2]
+}
+
+### 6. Overlapping request: seat 2 is taken, so seat 3 must NOT be
+### claimed either. All-or-nothing. Check seat 3 is still AVAILABLE after.
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 2,
+  "eventId": 1,
+  "seatIds": [2, 3]
+}
+
+### 7. Verify seat 3 was not partially claimed
+GET {{host}}/api/events/1/seats
+
+### ── Confirm with idempotency ────────────────────────────────
+
+@holdId = PASTE_HOLD_ID_HERE
+@idemKey = demo-key-001
+
+### 8. Confirm, carrying an Idempotency-Key
+POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+Idempotency-Key: {{idemKey}}
+
+{
+  "holdId": "{{holdId}}",
+  "userId": 1
+}
+
+### 9. Send the EXACT same request again.
+### Expect: identical response, same booking id, NO second booking.
+POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+Idempotency-Key: {{idemKey}}
+
+{
+  "holdId": "{{holdId}}",
+  "userId": 1
+}
+
+### 10. Same key, different body -> 422 IDEMPOTENCY_KEY_REUSED
+POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+Idempotency-Key: {{idemKey}}
+
+{
+  "holdId": "some-other-hold-id",
+  "userId": 1
+}
+
+### 11. Only one booking should exist for this user
+GET {{host}}/api/bookings?userId=1
+
+### ── Cancel ──────────────────────────────────────────────────
+
+### 12. Cancel booking 1
+POST {{host}}/api/bookings/1/cancel?userId=1
+
+### 13. Seats 1 and 2 back to AVAILABLE
+GET {{host}}/api/events/1/seats
+
+### ── Orphan sweeper ──────────────────────────────────────────
+### Hold a seat and do not confirm. After 120s the Redis key expires;
+### within 5s of that the sweeper logs "Expiry sweep released N seat(s)"
+### and the seat returns to AVAILABLE.
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": [50]
+}
+
+### ── Error cases ─────────────────────────────────────────────
+
+### Empty seat list -> 400 VALIDATION_FAILED
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": []
+}
+
+### Seat from another event -> 400 BAD_REQUEST
+POST {{host}}/api/bookings/hold
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "eventId": 1,
+  "seatIds": [205]
+}
+
+### Unknown booking -> 404 NOT_FOUND
+GET {{host}}/api/bookings/9999
+
+### Expired or unknown hold -> 410 HOLD_EXPIRED
+POST {{host}}/api/bookings/confirm
+Content-Type: application/json
+
+{
+  "holdId": "00000000-0000-0000-0000-000000000000",
+  "userId": 1
+}
