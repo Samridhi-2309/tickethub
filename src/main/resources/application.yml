@@ -36,11 +36,8 @@ server:
 
 logging:
   level:
-    # Statements are visible (useful for watching SELECT ... FOR UPDATE
-    # during a concurrency demo); parameter binding is not, because it
-    # logs every value of every statement and buries everything else.
     org.hibernate.SQL: debug
-    org.hibernate.orm.jdbc.bind: warn
+    org.hibernate.orm.jdbc.bind: trace
 
 # ── Application settings ─────────────────────────────────────
 tickethub:

@@ -23,19 +23,6 @@ import org.testcontainers.utility.DockerImageName;
 @ActiveProfiles("test")
 public abstract class IntegrationTestBase {
 
-    static {
-        // Docker Engine 29 raised the minimum supported Docker API version
-        // from 1.24 to 1.44. The docker-java client bundled with
-        // Testcontainers 1.20.x still negotiates 1.32, so the daemon
-        // rejects it with HTTP 400 and Testcontainers reports "could not
-        // find a valid Docker environment" even though Docker is running.
-        // Pinning the version here fixes it without a dependency upgrade.
-        // Set before any container is constructed, or it is ignored.
-        if (System.getProperty("api.version") == null) {
-            System.setProperty("api.version", "1.44");
-        }
-    }
-
     @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>(DockerImageName.parse("postgres:16-alpine"));
